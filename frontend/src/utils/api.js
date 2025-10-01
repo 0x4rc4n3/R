@@ -1,134 +1,209 @@
-const URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-const T = () => localStorage.getItem('token');
-const H = (f) => ({ 'Content-Type': 'application/json', ...(f && { Authorization: `Bearer ${f}` }) });
-const HU = () => (T() ? { Authorization: `Bearer ${T()}` } : {});
+// ============================================
+// FILE: frontend/src/utils/api.js - FIXED VERSION
+// ============================================
 
-const HR = async (r) => {
-  if (r.ok) return r.json();
-  const e = await r.json().catch(() => ({ message: 'An error occurred' }));
-  throw new Error(e.message || `HTTP Error: ${r.status}`);
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+
+// Get token from localStorage
+const getToken = () => localStorage.getItem('token');
+
+// Create headers with optional auth token
+const createHeaders = (includeAuth = true, isFormData = false) => {
+  const headers = {};
+  
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  if (includeAuth) {
+    const token = getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  
+  return headers;
 };
 
-const HE = (e) => {
-  console.error('API Error:', e);
-  if (/(Failed to fetch|NetworkError)/.test(e.message)) throw new Error('Network error. Please check your internet connection and ensure the server is running.');
-  throw e;
+// Handle API response
+const handleResponse = async (response) => {
+  // Handle 401 - redirect to login
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+      window.location.href = '/login';
+    }
+    throw new Error('Unauthorized - Please login again');
+  }
+
+  // Parse response
+  const contentType = response.headers.get('content-type');
+  let data;
+  
+  if (contentType && contentType.includes('application/json')) {
+    data = await response.json();
+  } else {
+    data = await response.text();
+  }
+
+  // Handle errors
+  if (!response.ok) {
+    const errorMessage = data?.message || data?.error || `HTTP Error: ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return data;
 };
 
-const AC = async (u, o = {}) => {
-  try { return await HR(await fetch(u, o)); } 
-  catch (e) { HE(e); }
+// Generic request function
+const request = async (endpoint, options = {}) => {
+  const {
+    method = 'GET',
+    data = null,
+    requiresAuth = true,
+    isFormData = false
+  } = options;
+
+  const url = `${API_BASE_URL}${endpoint}`;
+  const headers = createHeaders(requiresAuth, isFormData);
+
+  const config = {
+    method,
+    headers
+  };
+
+  // Add body for POST/PUT/PATCH requests
+  if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
+    config.body = isFormData ? data : JSON.stringify(data);
+  }
+
+  try {
+    console.log(`🔄 API Request: ${method} ${url}`);
+    const response = await fetch(url, config);
+    const result = await handleResponse(response);
+    console.log(`✅ API Response: ${method} ${url}`, result);
+    return result;
+  } catch (error) {
+    console.error(`❌ API Error: ${method} ${url}`, error);
+    
+    // Network error handling
+    if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+      throw new Error('Network error - Please check your connection and ensure the server is running at ' + API_BASE_URL);
+    }
+    
+    throw error;
+  }
 };
 
-const CM = (m, e, o = {}) => async (d, id) => {
-  const { requiresAuth: r = true, isFormData: f = false, customPath: c } = o;
-  let p = e;
-  if (c) p = c(id, d);
-  else if (id) p = `${e}/${id}`;
-
-  const h = f ? HU() : H(T());
-  const reqH = r ? h : { 'Content-Type': 'application/json' };
-
-  const conf = { method: m, headers: reqH };
-
-  if (d && /^(POST|PUT|PATCH)$/.test(m)) conf.body = f ? d : JSON.stringify(d);
-  return AC(`${URL}${p}`, conf);
-};
-
+// API methods
 const api = {
-  auth: {
-    login: (e, p) => CM('POST', '/api/auth/login', { requiresAuth: false })({ email: e, password: p }),
-    register: (u) => CM('POST', '/api/auth/register', { requiresAuth: false })(u),
-    getProfile: () => CM('GET', '/api/auth/profile')(),
-    updateProfile: (u) => CM('PUT', '/api/auth/profile')(u),
-    changePassword: (c, n) => CM('PUT', '/api/auth/change-password')({ currentPassword: c, newPassword: n })
-  },
+  // Authentication
+  auth: {
+    login: (email, password) => {
+      console.log('📧 Attempting login for:', email);
+      return request('/api/auth/login', {
+        method: 'POST',
+        data: { email, password },
+        requiresAuth: false
+      });
+    },
 
-  recipes: {
-    getAll: async (p = {}) => {
-      const q = new URLSearchParams(Object.fromEntries(Object.entries(p).filter(([_, v]) => v != null && v !== ''))).toString();
-      return CM('GET', `/api/recipes${q ? `?${q}` : ''}`)();
-    },
-    getById: (id) => CM('GET', '/api/recipes')(null, id),
-    create: (d) => CM('POST', '/api/recipes', { isFormData: d instanceof FormData })(d),
-    update: (id, d) => CM('PUT', '/api/recipes', { isFormData: d instanceof FormData })(d, id),
-    delete: (id) => CM('DELETE', '/api/recipes')(null, id),
-    rate: (id, r, v = '') => CM('POST', '/api/recipes')({ rating: r, review: v }, `${id}/rate`),
-    like: (id) => CM('POST', '/api/recipes')(null, `${id}/like`),
-    getPopular: (l = 10) => CM('GET', `/api/recipes?sortBy=averageRating&sortOrder=desc&limit=${l}`)(),
-    getRecent: (l = 10) => CM('GET', `/api/recipes?sortBy=createdAt&sortOrder=desc&limit=${l}`)(),
-    getByCategory: async (c, p = {}) => api.recipes.getAll({ category: c, ...p }),
-    searchByIngredients: async (i) => {
-      const p = Array.isArray(i) ? i.join(',') : i;
-      return CM('GET', `/api/search/ingredients?ingredients=${encodeURIComponent(p)}`)();
-    },
-    getStats: () => CM('GET', '/api/recipes/stats')()
-  },
+    register: (userData) => {
+      console.log('📝 Attempting registration for:', userData.email);
+      return request('/api/auth/register', {
+        method: 'POST',
+        data: userData,
+        requiresAuth: false
+      });
+    },
 
-  users: {
-    saveRecipe: (id) => CM('POST', '/api/users/save-recipe')(null, id),
-    removeSavedRecipe: (id) => CM('DELETE', '/api/users/save-recipe')(null, id),
-    getSavedRecipes: () => CM('GET', '/api/users/saved-recipes')(),
-    getUploadedRecipes: () => CM('GET', '/api/users/uploaded-recipes')(),
-    updateProfile: (d) => CM('PUT', '/api/users/profile')(d),
-    uploadProfileImage: (f) => {
-      const d = new FormData();
-      d.append('profileImage', f);
-      return CM('POST', '/api/users/profile-image', { isFormData: true })(d);
-    }
-  },
+    getProfile: () => {
+      return request('/api/auth/profile', {
+        method: 'GET',
+        requiresAuth: true
+      });
+    },
 
-  mealPlans: {
-    get: (w) => CM('GET', '/api/meal-plans')(null, w instanceof Date ? w.toISOString().split('T')[0] : w),
-    save: (d) => CM('POST', '/api/meal-plans')(d),
-    update: (w, d) => api.mealPlans.save({ ...d, weekStartDate: w }),
-    delete: (w) => CM('DELETE', '/api/meal-plans')(null, w instanceof Date ? w.toISOString().split('T')[0] : w),
-    generateAuto: (w, p = {}) => CM('POST', '/api/meal-plans/generate')({ weekDate: w, preferences: p })
-  },
+    updateProfile: (userData) => {
+      return request('/api/auth/profile', {
+        method: 'PUT',
+        data: userData,
+        requiresAuth: true
+      });
+    }
+  },
 
-  upload: {
-    image: (f, t = 'recipe') => {
-      const d = new FormData();
-      d.append('image', f);
-      d.append('type', t);
-      return CM('POST', '/api/upload/image', { isFormData: true })(d);
-    },
-    multiple: (f, t = 'recipe') => {
-      const d = new FormData();
-      Array.from(f).forEach(file => d.append('images', file));
-      d.append('type', t);
-      return CM('POST', '/api/upload/images', { isFormData: true })(d);
-    }
-  },
+  // Recipes
+  recipes: {
+    getAll: (params = {}) => {
+      const queryString = new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params).filter(([_, v]) => v != null && v !== '')
+        )
+      ).toString();
+      
+      const endpoint = `/api/recipes${queryString ? `?${queryString}` : ''}`;
+      return request(endpoint, { method: 'GET', requiresAuth: true });
+    },
 
-  health: () => CM('GET', '/health', { requiresAuth: false })(),
-  
-  request: async (e, o = {}) => {
-    const { method: m = 'GET', data: d, headers: h = {}, requireAuth: r = true } = o;
-    const reqH = { ...(r ? H(T()) : { 'Content-Type': 'application/json' }), ...h };
-    const conf = { method: m, headers: reqH };
+    getById: (id) => {
+      return request(`/api/recipes/${id}`, {
+        method: 'GET',
+        requiresAuth: true
+      });
+    },
 
-    if (d && /^(POST|PUT|PATCH)$/.test(m)) {
-      conf.body = d instanceof FormData ? d : JSON.stringify(d);
-      if (d instanceof FormData) delete conf.headers['Content-Type'];
-    }
-    return AC(`${URL}${e}`, conf);
-  }
-};
+    create: (recipeData) => {
+      return request('/api/recipes', {
+        method: 'POST',
+        data: recipeData,
+        isFormData: recipeData instanceof FormData,
+        requiresAuth: true
+      });
+    },
 
-const of = window.fetch;
-window.fetch = function(...a) {
-  return of.apply(this, a).then(r => {
-    if (r.status === 401 && window.location.pathname !== '/login') {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-    return r;
-  }).catch(e => {
-    console.error('Global fetch error:', e);
-    throw e;
-  });
+    update: (id, recipeData) => {
+      return request(`/api/recipes/${id}`, {
+        method: 'PUT',
+        data: recipeData,
+        isFormData: recipeData instanceof FormData,
+        requiresAuth: true
+      });
+    },
+
+    delete: (id) => {
+      return request(`/api/recipes/${id}`, {
+        method: 'DELETE',
+        requiresAuth: true
+      });
+    }
+  },
+
+  // Users
+  users: {
+    saveRecipe: (recipeId) => {
+      return request(`/api/users/save-recipe/${recipeId}`, {
+        method: 'POST',
+        requiresAuth: true
+      });
+    },
+
+    getSavedRecipes: () => {
+      return request('/api/users/saved-recipes', {
+        method: 'GET',
+        requiresAuth: true
+      });
+    }
+  },
+
+  // Health check
+  health: () => {
+    return request('/health', {
+      method: 'GET',
+      requiresAuth: false
+    });
+  }
 };
 
 export default api;
-export const { auth: authAPI, recipes: recipesAPI, users: usersAPI, mealPlans: mealPlansAPI, upload: uploadAPI } = api;
+export const { auth: authAPI, recipes: recipesAPI, users: usersAPI } = api;

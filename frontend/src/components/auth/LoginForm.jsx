@@ -1,3 +1,6 @@
+// ============================================
+// FILE: frontend/src/components/auth/LoginForm.jsx - FIXED
+// ============================================
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -16,12 +19,19 @@ const LoginForm = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  console.log('🖼️ LoginForm rendered');
+  console.log('🔍 useAuth hook available?', !!login);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
+    console.log(`📝 Input changed: ${name} = ${value}`);
+    
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
+    
+    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
@@ -31,6 +41,7 @@ const LoginForm = () => {
   };
 
   const validateForm = () => {
+    console.log('✔️ Validating form...');
     const newErrors = {};
 
     if (!formData.email.trim()) {
@@ -45,25 +56,41 @@ const LoginForm = () => {
       newErrors.password = 'Password must be at least 6 characters';
     }
 
+    console.log('✔️ Validation errors:', newErrors);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('🚀 FORM SUBMITTED!');
+    console.log('📋 Form data:', formData);
     
     if (!validateForm()) {
+      console.log('❌ Validation failed, stopping submission');
       return;
     }
 
+    console.log('✅ Validation passed, proceeding with login...');
     setLoading(true);
+    
     try {
+      console.log('🔄 Calling login function...');
+      console.log('📧 Email:', formData.email);
+      console.log('🔑 Password:', formData.password.replace(/./g, '*'));
+      
       const result = await login(formData.email, formData.password);
+      
+      console.log('📦 Login result:', result);
+      
       if (result.success) {
+        console.log('✅ Login successful!');
         toast.success('Login successful!');
         navigate('/');
       } else {
+        console.log('❌ Login failed:', result.error);
         toast.error(result.error || 'Login failed');
+        
         if (result.error.includes('email')) {
           setErrors({ email: result.error });
         } else if (result.error.includes('password')) {
@@ -71,8 +98,10 @@ const LoginForm = () => {
         }
       }
     } catch (error) {
+      console.error('💥 Unexpected error:', error);
       toast.error('An unexpected error occurred');
     } finally {
+      console.log('🏁 Login attempt finished');
       setLoading(false);
     }
   };
@@ -113,7 +142,7 @@ const LoginForm = () => {
                   value={formData.email}
                   onChange={handleChange}
                   className={`form-input pl-10 ${errors.email ? 'border-red-500 focus:ring-red-500' : ''}`}
-                  placeholder="     Enter your email"
+                  placeholder="Enter your email"
                 />
               </div>
               {errors.email && <p className="form-error">{errors.email}</p>}
@@ -136,7 +165,7 @@ const LoginForm = () => {
                   value={formData.password}
                   onChange={handleChange}
                   className={`form-input pl-10 pr-10 ${errors.password ? 'border-red-500 focus:ring-red-500' : ''}`}
-                  placeholder="     Enter your password"
+                  placeholder="Enter your password"
                 />
                 <button
                   type="button"
@@ -201,6 +230,15 @@ const LoginForm = () => {
               </p>
             </div>
           </form>
+        </div>
+
+        {/* Debug Info (Remove in production) */}
+        <div className="bg-gray-100 p-4 rounded-lg text-xs">
+          <p className="font-bold mb-2">Debug Info:</p>
+          <p>Email: {formData.email || '(empty)'}</p>
+          <p>Password: {formData.password ? '●'.repeat(formData.password.length) : '(empty)'}</p>
+          <p>Loading: {loading ? 'Yes' : 'No'}</p>
+          <p>Errors: {JSON.stringify(errors)}</p>
         </div>
       </div>
     </div>
