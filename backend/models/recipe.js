@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+const M = require('mongoose');
 
-const recipeSchema = new mongoose.Schema({
+const RSchema = new M.Schema({
   title: {
     type: String,
     required: [true, 'Recipe title is required'],
@@ -63,7 +63,7 @@ const recipeSchema = new mongoose.Schema({
     image: String,
     videoUrl: String,
     timer: {
-      type: Number, // in minutes
+      type: Number,
       min: [0, 'Timer cannot be negative']
     }
   }],
@@ -77,9 +77,7 @@ const recipeSchema = new mongoose.Schema({
     required: [true, 'Preparation time is required'],
     min: [1, 'Preparation time must be at least 1 minute']
   },
-  totalTime: {
-    type: Number
-  },
+  totalTime: Number,
   difficulty: {
     type: String,
     required: [true, 'Difficulty level is required'],
@@ -97,29 +95,25 @@ const recipeSchema = new mongoose.Schema({
   images: [{
     type: String,
     validate: {
-      validator: function(v) {
-        return /^https?:\/\/.+/.test(v);
-      },
+      validator: v => /^https?:\/\/.+/.test(v),
       message: 'Image must be a valid URL'
     }
   }],
   videoUrl: {
     type: String,
     validate: {
-      validator: function(v) {
-        return !v || /^https?:\/\/.+/.test(v);
-      },
+      validator: v => !v || /^https?:\/\/.+/.test(v),
       message: 'Video URL must be a valid URL'
     }
   },
   author: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: M.Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'Recipe author is required']
   },
   ratings: [{
     user: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: M.Schema.Types.ObjectId,
       ref: 'User',
       required: true
     },
@@ -135,7 +129,7 @@ const recipeSchema = new mongoose.Schema({
       trim: true
     },
     helpful: [{
-      type: mongoose.Schema.Types.ObjectId,
+      type: M.Schema.Types.ObjectId,
       ref: 'User'
     }],
     createdAt: {
@@ -160,7 +154,7 @@ const recipeSchema = new mongoose.Schema({
     min: [0, 'Views cannot be negative']
   },
   likes: [{
-    type: mongoose.Schema.Types.ObjectId,
+    type: M.Schema.Types.ObjectId,
     ref: 'User'
   }],
   nutritionInfo: {
@@ -168,12 +162,12 @@ const recipeSchema = new mongoose.Schema({
       type: Number,
       min: [0, 'Calories cannot be negative']
     },
-    protein: Number, // in grams
-    carbs: Number,   // in grams
-    fat: Number,     // in grams
-    fiber: Number,   // in grams
-    sugar: Number,   // in grams
-    sodium: Number   // in mg
+    protein: Number,
+    carbs: Number,
+    fat: Number,
+    fiber: Number,
+    sugar: Number,
+    sodium: Number
   },
   tags: [{
     type: String,
@@ -183,7 +177,7 @@ const recipeSchema = new mongoose.Schema({
   }],
   isApproved: {
     type: Boolean,
-    default: true // Set to false if you want admin moderation
+    default: true
   },
   isPremium: {
     type: Boolean,
@@ -207,52 +201,32 @@ const recipeSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Virtual for total time
-recipeSchema.virtual('totalTimeVirtual').get(function() {
-  return this.prepTime + this.cookingTime;
-});
+RSchema.virtual('totalTimeVirtual').get(function() { return this.prepTime + this.cookingTime; });
+RSchema.virtual('likesCount').get(function() { return this.likes.length; });
 
-// Virtual for likes count
-recipeSchema.virtual('likesCount').get(function() {
-  return this.likes.length;
-});
+RSchema.index({ title: 'text', description: 'text', tags: 'text' });
+RSchema.index({ category: 1 });
+RSchema.index({ dietaryTags: 1 });
+RSchema.index({ author: 1 });
+RSchema.index({ averageRating: -1 });
+RSchema.index({ createdAt: -1 });
+RSchema.index({ views: -1 });
+RSchema.index({ isApproved: 1, isPublished: 1 });
+RSchema.index({ 'ingredients.name': 1 });
+RSchema.index({ category: 1, averageRating: -1 });
+RSchema.index({ dietaryTags: 1, category: 1 });
 
-// Indexes for better performance
-recipeSchema.index({ title: 'text', description: 'text', tags: 'text' });
-recipeSchema.index({ category: 1 });
-recipeSchema.index({ dietaryTags: 1 });
-recipeSchema.index({ author: 1 });
-recipeSchema.index({ averageRating: -1 });
-recipeSchema.index({ createdAt: -1 });
-recipeSchema.index({ views: -1 });
-recipeSchema.index({ isApproved: 1, isPublished: 1 });
-recipeSchema.index({ 'ingredients.name': 1 });
-
-// Compound indexes
-recipeSchema.index({ category: 1, averageRating: -1 });
-recipeSchema.index({ dietaryTags: 1, category: 1 });
-
-// Pre-save middleware
-recipeSchema.pre('save', function(next) {
-  // Calculate total time
+RSchema.pre('save', function(next) {
   this.totalTime = this.prepTime + this.cookingTime;
-  
-  // Update last modified date
   this.lastModified = new Date();
-  
-  // Set published date if being published for the first time
-  if (this.isPublished && !this.publishedAt) {
-    this.publishedAt = new Date();
-  }
-  
+  if (this.isPublished && !this.publishedAt) this.publishedAt = new Date();
   next();
 });
 
-// Calculate average rating before saving
-recipeSchema.pre('save', function(next) {
+RSchema.pre('save', function(next) {
   if (this.ratings && this.ratings.length > 0) {
-    const totalRating = this.ratings.reduce((sum, rating) => sum + rating.rating, 0);
-    this.averageRating = Math.round((totalRating / this.ratings.length) * 10) / 10; // Round to 1 decimal place
+    const tR = this.ratings.reduce((sum, r) => sum + r.rating, 0);
+    this.averageRating = Math.round((tR / this.ratings.length) * 10) / 10;
     this.totalRatings = this.ratings.length;
   } else {
     this.averageRating = 0;
@@ -261,76 +235,39 @@ recipeSchema.pre('save', function(next) {
   next();
 });
 
-// Static method to find recipes by ingredient
-recipeSchema.statics.findByIngredient = function(ingredient) {
-  return this.find({
-    'ingredients.name': { $regex: ingredient, $options: 'i' },
-    isApproved: true,
-    isPublished: true
-  });
+RSchema.statics.findByIngredient = function(ing) {
+  return this.find({ 'ingredients.name': { $regex: ing, $options: 'i' }, isApproved: true, isPublished: true });
 };
 
-// Static method to find popular recipes
-recipeSchema.statics.findPopular = function(limit = 10) {
-  return this.find({ isApproved: true, isPublished: true })
-    .sort({ averageRating: -1, totalRatings: -1, views: -1 })
-    .limit(limit)
-    .populate('author', 'username profileImage');
+RSchema.statics.findPopular = function(lim = 10) {
+  return this.find({ isApproved: true, isPublished: true }).sort({ averageRating: -1, totalRatings: -1, views: -1 }).limit(lim).populate('author', 'username profileImage');
 };
 
-// Static method to find recipes by difficulty
-recipeSchema.statics.findByDifficulty = function(difficulty) {
-  return this.find({
-    difficulty,
-    isApproved: true,
-    isPublished: true
-  }).sort({ averageRating: -1 });
+RSchema.statics.findByDifficulty = function(diff) {
+  return this.find({ difficulty: diff, isApproved: true, isPublished: true }).sort({ averageRating: -1 });
 };
 
-// Instance method to add rating
-recipeSchema.methods.addRating = function(userId, rating, review) {
-  // Check if user already rated this recipe
-  const existingRatingIndex = this.ratings.findIndex(
-    r => r.user.toString() === userId.toString()
-  );
+RSchema.methods.addRating = function(uId, rating, review) {
+  const eRI = this.ratings.findIndex(r => r.user.toString() === uId.toString());
+  const now = new Date();
 
-  if (existingRatingIndex > -1) {
-    // Update existing rating
-    this.ratings[existingRatingIndex].rating = rating;
-    this.ratings[existingRatingIndex].review = review;
-    this.ratings[existingRatingIndex].createdAt = new Date();
+  if (eRI > -1) {
+    this.ratings[eRI] = { ...this.ratings[eRI].toObject(), rating, review, createdAt: now };
   } else {
-    // Add new rating
-    this.ratings.push({
-      user: userId,
-      rating,
-      review,
-      createdAt: new Date()
-    });
+    this.ratings.push({ user: uId, rating, review, createdAt: now });
   }
-
   return this.save();
 };
 
-// Instance method to increment views
-recipeSchema.methods.incrementViews = function() {
+RSchema.methods.incrementViews = function() {
   this.views += 1;
   return this.save();
 };
 
-// Instance method to toggle like
-recipeSchema.methods.toggleLike = function(userId) {
-  const likeIndex = this.likes.indexOf(userId);
-  
-  if (likeIndex > -1) {
-    // Remove like
-    this.likes.splice(likeIndex, 1);
-  } else {
-    // Add like
-    this.likes.push(userId);
-  }
-  
+RSchema.methods.toggleLike = function(uId) {
+  const lI = this.likes.indexOf(uId);
+  lI > -1 ? this.likes.splice(lI, 1) : this.likes.push(uId);
   return this.save();
 };
 
-module.exports = mongoose.model('Recipe', recipeSchema);
+module.exports = M.model('Recipe', RSchema);
