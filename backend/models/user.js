@@ -1,182 +1,140 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const m = require('mongoose'); // 'm' for mongoose
+const b = require('bcryptjs'); // 'b' for bcryptjs
 
-const userSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: [true, 'Username is required'],
-    unique: true,
-    trim: true,
-    minlength: [3, 'Username must be at least 3 characters long'],
-    maxlength: [30, 'Username cannot exceed 30 characters']
-  },
-  email: {
-    type: String,
-    required: [true, 'Email is required'],
-    unique: true,
-    trim: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
-  },
-  password: {
-    type: String,
-    required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters long']
-  },
-  profileImage: {
-    type: String,
-    default: ''
-  },
-  dietaryPreferences: [{
-    type: String,
-    enum: ['vegetarian', 'vegan', 'keto', 'gluten-free', 'dairy-free', 'paleo', 'low-carb', 'pescatarian']
-  }],
-  savedRecipes: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Recipe'
-  }],
-  uploadedRecipes: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Recipe'
-  }],
-  followers: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  following: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  bio: {
-    type: String,
-    maxlength: [500, 'Bio cannot exceed 500 characters']
-  },
-  location: {
-    type: String,
-    maxlength: [100, 'Location cannot exceed 100 characters']
-  },
-  website: {
-    type: String,
-    maxlength: [200, 'Website URL cannot exceed 200 characters']
-  },
-  isVerified: {
-    type: Boolean,
-    default: false
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  lastLogin: {
-    type: Date
-  },
-  resetPasswordToken: String,
-  resetPasswordExpires: Date,
-  emailVerificationToken: String,
-  emailVerificationExpires: Date
+// User Schema (Slightly reduced field validation for minification, keeping core structure)
+const s = new m.Schema({
+  username: {
+    type: String,
+    required: [true, 'Username is required'],
+    unique: true,
+    trim: true,
+    minlength: [3, 'Min 3 chars'], // Minimized error message
+    maxlength: 30
+  },
+  email: {
+    type: String,
+    required: [true, 'Email is required'],
+    unique: true,
+    trim: true,
+    lowercase: true,
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Invalid email'] // Minimized error message
+  },
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: [6, 'Min 6 chars'] // Minimized error message
+  },
+  profileImage: { type: String, default: '' },
+  dietaryPreferences: [{
+    type: String,
+    enum: ['vegetarian', 'vegan', 'keto', 'gluten-free', 'dairy-free', 'paleo', 'low-carb', 'pescatarian']
+  }],
+  savedRecipes: [{ type: m.Schema.Types.ObjectId, ref: 'Recipe' }],
+  uploadedRecipes: [{ type: m.Schema.Types.ObjectId, ref: 'Recipe' }],
+  followers: [{ type: m.Schema.Types.ObjectId, ref: 'User' }],
+  following: [{ type: m.Schema.Types.ObjectId, ref: 'User' }],
+  bio: { type: String, maxlength: 500 },
+  location: { type: String, maxlength: 100 },
+  website: { type: String, maxlength: 200 },
+  isVerified: { type: Boolean, default: false },
+  isActive: { type: Boolean, default: true },
+  lastLogin: Date,
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
+  emailVerificationToken: String,
+  emailVerificationExpires: Date
 }, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Virtual for full name if needed
-userSchema.virtual('recipesCount').get(function() {
-  return this.uploadedRecipes.length;
+// Virtuals (Minified names)
+s.virtual('rC').get(function() { return this.uploadedRecipes.length; }); // recipesCount
+s.virtual('fC').get(function() { return this.followers.length; });      // followersCount
+s.virtual('fgC').get(function() { return this.following.length; });     // followingCount
+
+// Indexes
+s.index({ email: 1 });
+s.index({ username: 1 });
+s.index({ createdAt: -1 });
+
+// Pre-save hook: Hash password (Minified to 'n' for next, 'e' for error)
+s.pre('save', async function(n) {
+  if (!this.isModified('password')) return n();
+  try {
+    const salt = await b.genSalt(12);
+    this.password = await b.hash(this.password, salt);
+    n();
+  } catch (e) {
+    n(e);
+  }
 });
 
-userSchema.virtual('followersCount').get(function() {
-  return this.followers.length;
+// Pre-save hook: Update timestamps (original code already handles this implicitly via { timestamps: true }, but keeping the explicit hook structure for minification exercise)
+s.pre('save', function(n) {
+  this.updatedAt = new Date();
+  n();
 });
 
-userSchema.virtual('followingCount').get(function() {
-  return this.following.length;
-});
-
-// Indexes for better performance
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ createdAt: -1 });
-
-// Hash password before saving
-userSchema.pre('save', async function(next) {
-  // Only hash the password if it has been modified (or is new)
-  if (!this.isModified('password')) return next();
-  
-  try {
-    // Hash password with cost of 12
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Update timestamps
-userSchema.pre('save', function(next) {
-  this.updatedAt = new Date();
-  next();
-});
-
-// Compare password method
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  try {
-    return await bcrypt.compare(candidatePassword, this.password);
-  } catch (error) {
-    throw error;
-  }
+// Method: Compare password (Minified function name and variable)
+s.methods.cP = async function(p) { // 'cP' for comparePassword, 'p' for candidatePassword
+  try {
+    return await b.compare(p, this.password);
+  } catch (e) {
+    throw e;
+  }
 };
 
-// Generate password reset token
-userSchema.methods.generatePasswordResetToken = function() {
-  const crypto = require('crypto');
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  
-  this.resetPasswordToken = crypto
-    .createHash('sha256')
-    .update(resetToken)
-    .digest('hex');
-  
-  this.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-  
-  return resetToken;
+// Method: Generate password reset token (Minified function name and variables)
+s.methods.gPRT = function() { // 'gPRT' for generatePasswordResetToken
+  const c = require('crypto'); // 'c' for crypto
+  const t = c.randomBytes(32).toString('hex'); // 't' for resetToken
+  
+  this.resetPasswordToken = c
+    .createHash('sha256')
+    .update(t)
+    .digest('hex');
+  
+  this.resetPasswordExpires = Date.now() + 600000; // 10 minutes (10 * 60 * 1000)
+  
+  return t;
 };
 
-// Generate email verification token
-userSchema.methods.generateEmailVerificationToken = function() {
-  const crypto = require('crypto');
-  const verificationToken = crypto.randomBytes(32).toString('hex');
-  
-  this.emailVerificationToken = crypto
-    .createHash('sha256')
-    .update(verificationToken)
-    .digest('hex');
-  
-  this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-  
-  return verificationToken;
+// Method: Generate email verification token (Minified function name and variables)
+s.methods.gEVT = function() { // 'gEVT' for generateEmailVerificationToken
+  const c = require('crypto'); // 'c' for crypto
+  const v = c.randomBytes(32).toString('hex'); // 'v' for verificationToken
+  
+  this.emailVerificationToken = c
+    .createHash('sha256')
+    .update(v)
+    .digest('hex');
+  
+  this.emailVerificationExpires = Date.now() + 86400000; // 24 hours (24 * 60 * 60 * 1000)
+  
+  return v;
 };
 
-// Transform output (remove sensitive fields)
-userSchema.methods.toJSON = function() {
-  const userObject = this.toObject();
-  delete userObject.password;
-  delete userObject.resetPasswordToken;
-  delete userObject.resetPasswordExpires;
-  delete userObject.emailVerificationToken;
-  delete userObject.emailVerificationExpires;
-  return userObject;
+// Method: Transform output (Minified function name and variable)
+s.methods.toJSON = function() {
+  const o = this.toObject(); // 'o' for userObject
+  delete o.password;
+  delete o.resetPasswordToken;
+  delete o.resetPasswordExpires;
+  delete o.emailVerificationToken;
+  delete o.emailVerificationExpires;
+  return o;
 };
 
-// Static method to find by email
-userSchema.statics.findByEmail = function(email) {
-  return this.findOne({ email: email.toLowerCase() });
+// Static method: Find by email (Minified function name and variable)
+s.statics.fBE = function(e) { // 'fBE' for findByEmail, 'e' for email
+  return this.findOne({ email: e.toLowerCase() });
 };
 
-// Static method to find by username
-userSchema.statics.findByUsername = function(username) {
-  return this.findOne({ username: new RegExp(`^${username}$`, 'i') });
+// Static method: Find by username (Minified function name and variable)
+s.statics.fBU = function(u) { // 'fBU' for findByUsername, 'u' for username
+  return this.findOne({ username: new RegExp(`^${u}$`, 'i') });
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = m.model('User', s);

@@ -1,70 +1,74 @@
 // ============================================
-// FILE: backend/scripts/resetAdmin.js
-// Delete existing admin and create new one
+// FILE: backend/scripts/resetAdmin.js - EXTREME MINIFIED
 // ============================================
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+const m = require('mongoose'); // 'm' for mongoose
+const b = require('bcryptjs'); // 'b' for bcryptjs
+const p = require('path');
+require('dotenv').config({ path: p.join(__dirname, '..', '.env') });
 
-const userSchema = new mongoose.Schema({
-  username: String,
-  email: String,
-  password: String,
-  role: String,
-  isActive: Boolean,
-  dietaryPreferences: [String],
-  savedRecipes: [],
-  uploadedRecipes: [],
-  createdAt: Date
+const URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/recipe_hub';
+const ADMIN_EMAIL = 'admin@recipehub.com';
+const ADMIN_PASS = 'Admin@123456';
+const ADMIN_USER = 'admin';
+
+// User Schema (Minified properties, keeping types)
+const s = new m.Schema({
+  username: String,
+  email: String,
+  password: String,
+  role: String,
+  isActive: Boolean,
+  dietaryPreferences: [String],
+  savedRecipes: [],
+  uploadedRecipes: [],
+  createdAt: Date
 });
 
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+s.pre('save', async function(n) { // 'n' for next
+  if (!this.isModified('password')) return n();
+  try {
+    const salt = await b.genSalt(10);
+    this.password = await b.hash(this.password, salt);
+    n();
+  } catch (e) { n(e); }
 });
 
-const User = mongoose.model('User', userSchema);
+const User = m.model('User', s);
 
-async function resetAdmin() {
-  try {
-    console.log('🔌 Connecting to MongoDB...');
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/recipe_hub');
-    console.log('✅ Connected!\n');
+async function rA() { // resetAdmin
+  try {
+    console.log('🔌 Connecting to MongoDB...');
+    await m.connect(URI);
+    console.log('✅ Connected!');
 
-    console.log('🗑️  Deleting existing admin accounts...');
-    const deleteResult = await User.deleteMany({ role: 'admin' });
-    console.log(`   Deleted ${deleteResult.deletedCount} admin account(s)\n`);
+    console.log('🗑️ Deleting old admin...');
+    const dR = await User.deleteMany({ role: 'admin' }); // deleteResult
+    console.log(` Deleted ${dR.deletedCount} admin(s).`);
 
-    console.log('📝 Creating new admin account...');
-    const admin = new User({
-      username: 'admin',
-      email: 'admin@recipehub.com',
-      password: 'Admin@123456',
-      role: 'admin',
-      isActive: true,
-      dietaryPreferences: [],
-      createdAt: new Date()
-    });
+    console.log('📝 Creating new admin...');
+    const admin = new User({
+      username: ADMIN_USER,
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASS,
+      role: 'admin',
+      isActive: true,
+      dietaryPreferences: [],
+      createdAt: new Date()
+    });
 
-    await admin.save();
-    
-    console.log('\n✅✅✅ Admin account reset successfully! ✅✅✅');
-    console.log('================================================');
-    console.log('📧 Email:    admin@recipehub.com');
-    console.log('🔑 Password: Admin@123456');
-    console.log('👤 Username: admin');
-    console.log('🎭 Role:     admin');
-    console.log('================================================\n');
+    await admin.save();
+    
+    console.log('\n✅ Admin reset complete! Default credentials:');
+    console.log(` E: ${ADMIN_EMAIL}`);
+    console.log(` P: ${ADMIN_PASS}`);
 
-    await mongoose.connection.close();
-    console.log('🔌 MongoDB connection closed');
-    process.exit(0);
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-    process.exit(1);
-  }
+    await m.connection.close();
+    // console.log('🔌 MongoDB connection closed');
+    process.exit(0);
+  } catch (e) { // 'e' for error
+    console.error('❌ Error:', e.message);
+    process.exit(1);
+  }
 }
 
-resetAdmin();
+rA();
